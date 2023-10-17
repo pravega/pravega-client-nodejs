@@ -1,0 +1,96 @@
+# This file is used to configure CI builds using Github actions ref: https://help.github.com/en/categories/automating-your-workflow-with-github-actions 
+
+on:
+  # Trigger the workflow on push or pull request,
+  # but only for the master branch
+  push:
+    tags:
+      - '*'
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+      
+
+name: CIbuild
+
+jobs:
+  test_jest:
+    name: run-jest
+    runs-on: ubuntu-20.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        node_version:
+          - 16
+          - 18
+          - 20
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          default: true
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - uses: actions/setup-java@v1
+        with:
+          java-version: "11" # The JDK version to make available on the path.
+      - name: Download and Run Pravega standalone
+        run: |
+          wget https://github.com/pravega/pravega/releases/download/v0.13.0-rc1/pravega-0.13.0.tgz
+          tar -xzvf pravega-0.13.0.tgz
+          pravega-0.13.0/bin/pravega-standalone > pravega.log 2>&1 &
+          sleep 120 && echo "Started standalone"
+          tail pravega.log
+      - name: Set up Nodejs
+        uses: actions/setup-node@v2
+        with:
+          node-version: ${{ matrix.node_version }}
+      - name: Install modules
+        run: npm i
+      - name: Test
+        run: npm test
+      - name: Tar Reports
+        run: tar -cf reports-${{github.job}}.tzst ./coverage
+      - name: Upload Reports
+        if: always()
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{github.job}}-reports
+          retention-days: 5
+          path: reports-${{github.job}}.tzst
+      - name: Upload Pravega standalone logs
+        uses: actions/upload-artifact@v2
+        if: always()
+        with:
+          name: pravega-standalone-log
+          path: pravega.log
+          retention-days: 5
+  build_and_test_complete:
+    name: CI Complete
+    needs: [test_jest]
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 2
+      - name: Download code coverage reports
+        uses: actions/download-artifact@v2
+      - name: Untar reports
+        run: ( ls */reports-*.tzst | xargs -n1 tar --keep-newer-files -xf )
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v1
+        env:
+          CODECOV_TOKEN: ${{secrets.CODECOV_TOKEN}}
