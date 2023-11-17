@@ -12,7 +12,7 @@
         }
     },
     "scripts": {
-        "build": "rm -rf native && mkdir native && cargo-cp-artifact -ac pravega_nodejs ./native/pravega.node -- cargo build --message-format=json-render-diagnostics",
+        "build": "rm -rf native && mkdir native && cargo-cp-artifact -ac pravega-client-nodejs ./native/pravega.node -- cargo build --message-format=json-render-diagnostics",
         "release-native": "npm run build -- --release",
         "release-js": "rm -rf dist && npx tsc && python3 release_cjs.py && npx tsc -p tsconfig-cjs.json",
         "test": "npm run release-native && PRAVEGA_NODEJS_DEV=true node --loader ts-node/esm --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand"
